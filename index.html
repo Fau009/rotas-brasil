@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rotas Brasil</title>
+  <meta name="description" content="Simulador de itinerários de ônibus, metrô e trem em cidades brasileiras, com dados abertos (GTFS) e status das linhas de trilhos.">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="css/estilo.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f6feb'/><rect x='8' y='7' width='16' height='15' rx='3' fill='white'/><rect x='10' y='10' width='12' height='5' rx='1' fill='%231f6feb'/><circle cx='12' cy='25' r='2' fill='white'/><circle cx='20' cy='25' r='2' fill='white'/></svg>">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <button class="icone-btn so-mobile" id="btnPainel" aria-label="Abrir painel">☰</button>
+      <strong>Rotas Brasil</strong>
+      <span class="selo">modelo</span>
+    </div>
+    <select id="selRegiao" aria-label="Região"></select>
+    <div class="atualizacao">
+      <span id="txtAtualizacao">Carregando…</span>
+      <button id="btnRecarregar" class="btn">↻ Recarregar</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="painel" id="painel">
+      <nav class="abas" role="tablist">
+        <button class="aba ativa" data-aba="linhas">Linhas</button>
+        <button class="aba" data-aba="trilhos">Status trilhos</button>
+        <button class="aba" data-aba="simulador">Simulador</button>
+        <button class="aba" data-aba="sobre">Fontes</button>
+      </nav>
+
+      <section class="conteudo ativa" id="aba-linhas">
+        <input id="busca" type="search" placeholder="Buscar linha: número, nome ou destino">
+        <div class="chips" id="filtroTipo"></div>
+        <div id="detalheLinha" class="detalhe oculto"></div>
+        <ul id="listaLinhas" class="lista"></ul>
+      </section>
+
+      <section class="conteudo" id="aba-trilhos">
+        <p class="nota" id="notaTrilhos"></p>
+        <ul id="listaStatus" class="lista-status"></ul>
+        <div class="legenda-status">
+          <span><i class="bola normal"></i>Normal</span>
+          <span><i class="bola atencao"></i>Atenção / reduzida</span>
+          <span><i class="bola paralisada"></i>Paralisada</span>
+          <span><i class="bola sem_dados"></i>Sem dados</span>
+        </div>
+      </section>
+
+      <section class="conteudo" id="aba-simulador">
+        <p class="nota">Anima os veículos ao longo do trajeto usando o quadro de horários (GTFS). É uma simulação, não é a posição real.</p>
+        <label class="campo">O que simular
+          <select id="simAlvo">
+            <option value="linha">Linha selecionada</option>
+            <option value="trilhos">Todos os trilhos da região</option>
+          </select>
+        </label>
+        <p id="simLinha" class="nota forte"></p>
+        <div class="linha-campos">
+          <label class="campo">Dia
+            <select id="simDia"><option value="u">Dia útil</option><option value="s">Sábado</option><option value="d">Domingo</option></select>
+          </label>
+          <label class="campo">Velocidade
+            <select id="simVel"><option value="1">1× (real)</option><option value="10">10×</option><option value="60" selected>60× (1 min/s)</option><option value="300">300×</option></select>
+          </label>
+        </div>
+        <label class="campo">Horário: <strong id="simHora">08:00</strong>
+          <input type="range" id="simRelogio" min="0" max="1439" value="480">
+        </label>
+        <div class="linha-campos">
+          <button class="btn primario" id="simPlay">▶ Iniciar</button>
+          <button class="btn" id="simAgora">Agora</button>
+        </div>
+        <p class="nota" id="simInfo"></p>
+      </section>
+
+      <section class="conteudo" id="aba-sobre">
+        <h3>Como funciona</h3>
+        <p class="nota">Site estático no GitHub Pages. Uma automação (GitHub Actions) baixa os dados abertos periodicamente e publica em JSON. O botão <b>Recarregar</b> busca a versão mais recente já publicada.</p>
+        <h3>Fontes de dados</h3>
+        <ul id="listaFontes" class="lista-fontes"></ul>
+        <p class="nota">Itinerários e horários: feeds GTFS via <a href="https://mobilitydatabase.org" target="_blank" rel="noopener">Mobility Database</a>. Mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>. Estações sob demanda: Overpass API.</p>
+      </section>
+    </aside>
+
+    <div class="mapa-wrap">
+      <div id="mapa"></div>
+      <div class="camadas" id="camadas">
+        <label><input type="checkbox" id="cTrilhos" checked> Trilhos</label>
+        <label><input type="checkbox" id="cParadas" checked> Paradas (zoom)</label>
+        <label id="lblVeiculos"><input type="checkbox" id="cVeiculos"> Ônibus (última posição)</label>
+        <button class="btn mini" id="btnOsm">Estações OSM nesta área</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="js/simulador.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "rotas-brasil",
+  "version": "1.0.0",
+  "description": "Simulador de itinerários de ônibus, metrô e trem em cidades brasileiras com dados abertos",
+  "scripts": {
+    "baixar": "node scripts/baixar-gtfs.mjs",
+    "gtfs": "node --max-old-space-size=4096 scripts/build-gtfs.mjs",
+    "status": "node scripts/atualizar-status.mjs",
+    "dados": "npm run baixar && npm run gtfs && npm run status",
+    "servir": "npx --yes serve -l 8080 ."
+  },
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "unzipper": "^0.12.5"
+  },
+  "private": true
+}

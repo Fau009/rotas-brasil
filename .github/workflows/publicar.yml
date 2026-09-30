@@ -1,0 +1,67 @@
+name: Atualizar dados e publicar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'   # status dos trilhos e posição dos ônibus
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Semana atual (itinerários GTFS são reprocessados 1x por semana)
+        id: semana
+        run: echo "id=$(date -u +%G-%V)-${{ hashFiles('scripts/build-gtfs.mjs', 'scripts/regioes.mjs') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache dos itinerários processados
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/*/linhas.json
+            data/*/paradas.json
+            data/*/l
+            data/regioes.json
+          key: gtfs-${{ steps.semana.outputs.id }}
+
+      - name: Baixar e processar GTFS
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          node scripts/baixar-gtfs.mjs
+          node --max-old-space-size=4096 scripts/build-gtfs.mjs
+
+      - name: Coletar status dos trilhos e posição dos ônibus
+        run: node scripts/atualizar-status.mjs
+
+      - name: Montar site
+        run: |
+          mkdir -p _site
+          cp -r index.html css js data _site/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
