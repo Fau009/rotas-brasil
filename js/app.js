@@ -325,6 +325,7 @@
   // ---------- eventos ----------
   $('#btnRecarregar').onclick = recarregar;
   $('#selRegiao').onchange = e => carregarRegiao(e.target.value);
+  addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== E.regiao?.id && E.regioes.some(r => r.id === id)) carregarRegiao(id); });
   $('#btnPainel').onclick = () => $('#painel').classList.toggle('aberto');
   document.querySelectorAll('.aba').forEach(b => b.onclick = () => mostrarAba(b.dataset.aba));
   $('#busca').oninput = renderLista;
