@@ -27,7 +27,10 @@
     <div class="atualizacao">
       <span id="txtAtualizacao">Carregando…</span>
       <button id="btnRecarregar" class="btn">↻ Recarregar</button>
-      <button id="btnTema" class="btn icone" title="Tema da interface" aria-label="Alternar tema">◐</button>
+      <button id="btnLocal" class="btn icone fantasma" title="Mostrar minha localização no mapa (ativar/desativar)" aria-label="Minha localização" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 3.5 3.5 10.6l7 2.4 2.4 7z"/></svg>
+      </button>
+      <button id="btnTema" class="btn icone fantasma" title="Tema da interface" aria-label="Alternar tema">◐</button>
     </div>
   </header>
 
@@ -91,7 +94,7 @@
         <p class="nota">Site estático no GitHub Pages. Uma automação (GitHub Actions) baixa os dados abertos periodicamente e publica em JSON. O botão <b>Recarregar</b> busca a versão mais recente já publicada.</p>
         <h3>Fontes de dados</h3>
         <ul id="listaFontes" class="lista-fontes"></ul>
-        <p class="nota">Itinerários e horários: feeds GTFS via <a href="https://mobilitydatabase.org" target="_blank" rel="noopener">Mobility Database</a>. Cidades: contornos municipais do <a href="https://servicodados.ibge.gov.br/api/docs/malhas" target="_blank" rel="noopener">IBGE</a>. Mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (detalhado) e Esri (claro/escuro). Estações sob demanda: Overpass API.</p>
+        <p class="nota">Itinerários e horários: feeds GTFS via <a href="https://mobilitydatabase.org" target="_blank" rel="noopener">Mobility Database</a>. Cidades: contornos municipais do <a href="https://servicodados.ibge.gov.br/api/docs/malhas" target="_blank" rel="noopener">IBGE</a>. Mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (detalhado) e Esri (claro/escuro). Estações e terminais: OpenStreetMap via Overpass API (atualizado semanalmente). Sua localização, quando ativada, fica só no seu navegador.</p>
       </section>
     </aside>
 
@@ -109,7 +112,7 @@
         <label><input type="checkbox" id="cTrilhos" checked> Trilhos</label>
         <label><input type="checkbox" id="cParadas" checked> Paradas (zoom)</label>
         <label id="lblVeiculos"><input type="checkbox" id="cVeiculos"> Ônibus (última posição)</label>
-        <button class="btn mini" id="btnOsm">Estações OSM nesta área</button>
+        <label><input type="checkbox" id="cEstacoes" checked> Estações e terminais</label>
       </div>
     </div>
   </main>

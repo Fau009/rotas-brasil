@@ -14,7 +14,9 @@ Um modelo de simulador de itinerários de ônibus, metrô e trem em cidades bras
 - **Status dos trilhos** (Grande São Paulo): situação de cada linha do Metrô, ViaQuatro, ViaMobilidade, CPTM e TIC Trens.
 - **Simulador**: anima os veículos ao longo do trajeto a partir do quadro de horários, para uma linha ou para todos os trilhos da região. Controle de horário, dia e velocidade.
 - **Ônibus (última posição)**: Rio de Janeiro (ônibus municipais + BRT) e Belo Horizonte.
-- **Estações OSM**: busca estações e terminais do OpenStreetMap na área visível.
+- **Você está aqui**: um ícone discreto no topo liga e desliga a localização. Com ela ligada, o ⌖ centraliza em você, e tocar no marcador lista as paradas mais próximas (até 500 m). A localização fica só no navegador.
+- **Linhas da parada**: ao clicar numa parada, aparecem todas as linhas que passam ali. Cada uma abre o itinerário.
+- **Estações e terminais** (OpenStreetMap, atualizados semanalmente): nos mapas Claro, Escuro e Branco, os nomes das estações de metrô, trem, VLT e dos terminais aparecem direto no mapa, sem sobreposição.
 - **Última atualização + botão Recarregar** no topo. Não é tempo real: os dados são coletados periodicamente.
 
 ## Estados e cidades
@@ -42,6 +44,7 @@ Como os dados passam pela automação, o navegador não esbarra em bloqueio de C
 scripts/regioes.mjs          # regiões e fontes
 scripts/baixar-gtfs.mjs      # baixa os GTFS
 scripts/build-gtfs.mjs       # GTFS + IBGE → data/<uf>/{linhas,paradas,cidades}.json + l/<linha>.json
+scripts/baixar-estacoes.mjs  # Overpass → data/<uf>/estacoes.json
 scripts/atualizar-status.mjs # → data/status-trilhos.json, data/<regiao>/veiculos.json, data/meta.json
 js/app.js, js/simulador.js   # front-end
 ```

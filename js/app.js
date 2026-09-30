@@ -13,7 +13,7 @@
     carimbo: Date.now(), regioes: [], gtfsEm: null, meta: null, regiao: null,
     cidades: [], cidade: 0, nomeMun: new Map(), // cidade 0 = todas as cidades do estado
     linhas: [], paradas: new Map(), status: null, veiculos: null,
-    sel: null, sentido: 0, filtroTipo: 'todos', escopo: 'todas', trilhosDados: []
+    sel: null, sentido: 0, filtroTipo: 'todos', escopo: 'todas', trilhosDados: [], estacoes: []
   };
 
   async function obter(url) {
@@ -45,7 +45,8 @@
   const C = {
     contorno: L.layerGroup().addTo(mapa),
     trilhos: L.layerGroup().addTo(mapa), paradas: L.layerGroup().addTo(mapa), linha: L.layerGroup().addTo(mapa),
-    veiculos: L.layerGroup(), osm: L.layerGroup().addTo(mapa), sim: L.layerGroup().addTo(mapa)
+    estacoes: L.layerGroup().addTo(mapa), veiculos: L.layerGroup(), sim: L.layerGroup().addTo(mapa),
+    local: L.layerGroup().addTo(mapa)
   };
   let estilo = null;
   function usarEstilo(nome) {
@@ -55,7 +56,7 @@
     estilo = nome; ls.set('mapa', nome);
     $('#mapa').classList.toggle('fundo-branco', nome === 'branco');
     document.querySelectorAll('#estilosMapa button').forEach(b => b.classList.toggle('ativo', b.dataset.estilo === nome));
-    desenharContorno();
+    desenharContorno(); desenharEstacoes();
   }
 
   // contorno das cidades: no fundo branco mostra todas (a escolhida em destaque); nos demais, só a escolhida, tracejada
@@ -114,16 +115,18 @@
     const r = acharRegiao(id) || E.regioes[0];
     E.regiao = r; ls.set('regiao', r.id);
     $('#selRegiao').value = r.id;
-    limparSelecao(); pararSim(); C.trilhos.clearLayers(); C.paradas.clearLayers(); C.osm.clearLayers(); C.veiculos.clearLayers(); C.contorno.clearLayers();
+    limparSelecao(); pararSim(); C.trilhos.clearLayers(); C.paradas.clearLayers(); C.estacoes.clearLayers(); C.veiculos.clearLayers(); C.contorno.clearLayers();
     $('#camadas').classList.toggle('oculto-v', !r.veiculos);
     if (!r.veiculos) { $('#cVeiculos').checked = false; mapa.removeLayer(C.veiculos); }
     $('#listaLinhas').innerHTML = '<li class="mais">Carregando linhas…</li>';
     $('#selCidade').innerHTML = '<option>Carregando…</option>';
 
-    const [linhas, paradas, cidades] = await Promise.all([
-      obter(`data/${r.id}/linhas.json`), obter(`data/${r.id}/paradas.json`), obter(`data/${r.id}/cidades.json`)
+    const [linhas, paradas, cidades, estacoes] = await Promise.all([
+      obter(`data/${r.id}/linhas.json`), obter(`data/${r.id}/paradas.json`), obter(`data/${r.id}/cidades.json`),
+      obter(`data/${r.id}/estacoes.json`).catch(() => [])
     ]);
     if (E.regiao !== r) return;
+    E.estacoes = estacoes;
     E.linhas = linhas; E.paradas = new Map(paradas.map(p => [p[0], p]));
     E.cidades = cidades; E.nomeMun = new Map(cidades.map(c => [c.id, c.nome]));
     $('#selCidade').innerHTML = `<option value="0">Todas as cidades (${cidades.length})</option>` +
@@ -148,7 +151,12 @@
     montarFiltros(); renderLista(); desenharContorno(); enquadrar(); desenharParadas();
   }
 
-  // reposiciona o mapa na cidade escolhida (ou no conjunto de cidades do estado)
+  // reposiciona o mapa: na pessoa (se a localização estiver ativa) ou na cidade escolhida
+  function reposicionar() {
+    if (G.ativo && G.pos) { mapa.setView(G.pos, Math.max(mapa.getZoom(), 16)); return; }
+    if (G.ativo) aviso('Aguardando sua localização…');
+    enquadrar();
+  }
   function enquadrar() {
     const cs = E.cidade ? E.cidades.filter(c => c.id === E.cidade) : E.cidades;
     if (!cs.length) return;
@@ -174,8 +182,45 @@
     for (const p of E.paradas.values()) {
       if (!b.contains([p[2], p[3]])) continue;
       if (++n > 1500) break;
-      L.circleMarker([p[2], p[3]], { radius: 4, color: '#555', weight: 1, fillColor: '#fff', fillOpacity: 1, renderer: render })
-        .bindPopup(`<b>${esc(p[1])}</b><br><small>${esc(E.nomeMun.get(p[4]) || '')} · parada ${esc(p[0])}</small>`).addTo(C.paradas);
+      L.circleMarker([p[2], p[3]], { radius: 5, color: '#555', weight: 1.5, fillColor: '#fff', fillOpacity: 1, renderer: render })
+        .bindPopup(() => popupParada(p), { maxWidth: 280 }).addTo(C.paradas);
+    }
+  }
+
+  // popup de parada: nome, cidade e as linhas que passam ali
+  function popupParada(p, extra = '') {
+    const doPonto = (p[5] || []).map(i => E.linhas[i]).filter(Boolean);
+    const LIM = 40;
+    return `<b>${esc(p[1])}</b><br><small>${esc(nomeCid(p[4]))} · parada ${esc(p[0])}${extra}</small>` +
+      (doPonto.length ? `<div class="nota">${doPonto.length} linha(s) passam aqui:</div><div class="pop-linhas">` +
+        doPonto.slice(0, LIM).map(l => `<button data-ver-linha="${esc(l.id)}" style="background:#${l.cor};color:#${l.tc}" title="${esc(l.n)}">${esc(l.c || l.n)}</button>`).join('') +
+        (doPonto.length > LIM ? `<span class="nota">+${doPonto.length - LIM}</span>` : '') + '</div>'
+        : '<div class="nota">Nenhuma linha cadastrada nesta parada.</div>');
+  }
+
+  // estações e terminais (OSM): nos fundos sem nomes (claro/escuro/branco) desenha ponto + nome
+  function desenharEstacoes() {
+    C.estacoes.clearLayers();
+    if (!$('#cEstacoes').checked || estilo === 'detalhado' || !E.estacoes.length) return;
+    const z = mapa.getZoom(); if (z < 11) return;
+    const b = mapa.getBounds().pad(0.15); const escuroMapa = estilo === 'escuro';
+    const COR = { metro: '#d62828', trem: '#6a4c93', vlt: '#2a9d8f', terminal: '#1f6feb' };
+    const NOME = { metro: 'Estação de metrô', trem: 'Estação de trem', vlt: 'VLT / bonde', terminal: 'Terminal de ônibus' };
+    // prioridade: metrô/trem, VLT e depois terminais; um nome só aparece se não encostar em outro
+    const PRIO = { metro: 0, trem: 0, vlt: 1, terminal: 2 };
+    const visiveis = E.estacoes.filter(e => b.contains([e[1], e[2]]) && (e[3] !== 'terminal' || z >= 13)).sort((a, b2) => PRIO[a[3]] - PRIO[b2[3]]);
+    const ocupado = [];
+    const cabe = (x, y, w, h) => !ocupado.some(o => x < o[2] && x + w > o[0] && y < o[3] && y + h > o[1]);
+    for (const [nome, lat, lon, tipo, op] of visiveis) {
+      const terminal = tipo === 'terminal';
+      const m = L.circleMarker([lat, lon], {
+        radius: terminal ? 4.5 : 5.5, weight: 2, color: COR[tipo], fillColor: escuroMapa ? '#171e27' : '#fff', fillOpacity: 1, renderer: render
+      }).bindPopup(`<b>${esc(nome)}</b><br>${NOME[tipo]}${op ? ' · ' + esc(op) : ''}<br><small>OpenStreetMap</small>`).addTo(C.estacoes);
+      const pt = mapa.latLngToContainerPoint([lat, lon]);
+      const w = nome.length * (terminal ? 6 : 6.6) + 14, x = pt.x + 4, y = pt.y - 9;
+      if (!cabe(x, y, w, 18)) continue;
+      ocupado.push([x - 8, y, x + w, y + 18]);
+      m.bindTooltip(esc(nome), { permanent: true, direction: 'right', offset: [6, 0], className: `rotulo-estacao${escuroMapa ? ' escuro' : ''}${terminal ? ' terminal' : ''}` });
     }
   }
 
@@ -254,7 +299,7 @@
       const p = E.paradas.get(pid); if (!p) return;
       const ponta = i === 0 || i === s.paradas.length - 1;
       L.circleMarker([p[2], p[3]], { radius: ponta ? 7 : 4.5, color: cor, weight: 2, fillColor: '#fff', fillOpacity: 1, renderer: render })
-        .bindPopup(`<b>${esc(p[1])}</b><br>${esc(nomeCid(p[4]))} · ${i + 1}ª parada · +${Math.round(min)} min da saída`).addTo(C.linha);
+        .bindPopup(() => popupParada(p, ` · ${i + 1}ª parada desta linha, +${Math.round(min)} min da saída`), { maxWidth: 280 }).addTo(C.linha);
     });
     if (ajustar) mapa.fitBounds(pl.getBounds(), { padding: [30, 30] });
   }
@@ -344,23 +389,52 @@
   }
   const acharLinha = cod => { const c = String(cod).replace(/^0+/, ''); return E.linhas.find(l => l.c.replace(/^0+/, '') === c); };
 
-  // ---------- estações OSM (Overpass) ----------
-  async function estacoesOSM() {
-    if (mapa.getZoom() < 11) { aviso('Aproxime o mapa (zoom 11+) para buscar estações'); return; }
-    const b = mapa.getBounds(); const bb = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(n => n.toFixed(4)).join(',');
-    const q = `[out:json][timeout:25];(node["railway"="station"](${bb});node["public_transport"="station"](${bb});node["amenity"="bus_station"](${bb}););out 400;`;
-    const btn = $('#btnOsm'); btn.disabled = true;
-    try {
-      const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) });
-      const js = await r.json(); C.osm.clearLayers();
-      for (const n of js.elements) {
-        const tipo = n.tags.station === 'subway' ? 'Metrô' : n.tags.amenity === 'bus_station' ? 'Terminal de ônibus' : n.tags.railway === 'station' ? 'Estação ferroviária' : 'Estação';
-        L.circleMarker([n.lat, n.lon], { radius: 6, color: '#6a4c93', weight: 2, fillColor: '#fff', fillOpacity: 1, renderer: render })
-          .bindPopup(`<b>${esc(n.tags.name || 'Sem nome')}</b><br>${tipo}${n.tags.operator ? ' · ' + esc(n.tags.operator) : ''}<br><small>OpenStreetMap</small>`).addTo(C.osm);
-      }
-      aviso(`${js.elements.length} estações encontradas (OpenStreetMap)`);
-    } catch { aviso('Overpass indisponível agora, tente novamente'); }
-    btn.disabled = false;
+  // ---------- localização da pessoa ("Você está aqui") ----------
+  const G = { ativo: false, watch: null, pos: null, precisao: 0, marcador: null, circulo: null, centrou: false };
+  const distM = (a, b) => { const k = Math.cos(a[0] * Math.PI / 180) * 111320; return Math.hypot((a[1] - b[1]) * k, (a[0] - b[0]) * 110540); };
+
+  function popupVoce() {
+    const perto = [];
+    for (const p of E.paradas.values()) { const d = distM(G.pos, [p[2], p[3]]); if (d <= 500) perto.push([d, p]); }
+    perto.sort((a, b) => a[0] - b[0]);
+    return `<b>Você está aqui</b><br><small>Precisão de ~${Math.round(G.precisao)} m</small>` + (perto.length
+      ? `<div class="nota">Paradas mais próximas:</div><ul class="pop-perto">` + perto.slice(0, 6).map(([d, p]) =>
+        `<li data-parada="${esc(p[0])}">${esc(p[1])} <span>· ${Math.round(d)} m · ${(p[5] || []).length} linha(s)</span></li>`).join('') + '</ul>'
+      : '<div class="nota">Nenhuma parada cadastrada num raio de 500 m.</div>');
+  }
+
+  function aoLocalizar(ev) {
+    const { latitude, longitude, accuracy } = ev.coords;
+    G.pos = [latitude, longitude]; G.precisao = accuracy;
+    $('#btnLocal').classList.remove('buscando');
+    if (!G.marcador) {
+      G.circulo = L.circle(G.pos, { radius: accuracy, color: '#1f6feb', weight: 1, fillColor: '#1f6feb', fillOpacity: .08, interactive: false }).addTo(C.local);
+      G.marcador = L.marker(G.pos, { icon: L.divIcon({ className: '', html: '<div class="voce-aqui"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 1000, keyboard: false })
+        .bindTooltip('Você está aqui', { permanent: true, direction: 'top', offset: [0, -12], className: 'rotulo-voce' })
+        .bindPopup(popupVoce, { maxWidth: 280 }).addTo(C.local);
+    } else { G.marcador.setLatLng(G.pos); G.circulo.setLatLng(G.pos).setRadius(accuracy); }
+    if (!G.centrou) { G.centrou = true; mapa.setView(G.pos, Math.max(mapa.getZoom(), 15)); }
+  }
+  function erroLocal(e) {
+    const msg = e.code === 1 ? 'Permissão de localização negada no navegador' : e.code === 3 ? 'Não foi possível obter a localização a tempo' : 'Localização indisponível';
+    aviso(msg); if (e.code === 1) desligarLocal();
+    $('#btnLocal').classList.remove('buscando');
+  }
+  function ligarLocal() {
+    if (!('geolocation' in navigator)) { aviso('Este navegador não oferece localização'); return; }
+    G.ativo = true; G.centrou = false; ls.set('local', '1');
+    $('#btnLocal').setAttribute('aria-pressed', 'true'); $('#btnLocal').classList.add('buscando');
+    $('#btnLocal').title = 'Localização ativada: clique para desativar';
+    $('#btnCentralizar').title = 'Centralizar na sua localização';
+    G.watch = navigator.geolocation.watchPosition(aoLocalizar, erroLocal, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+  }
+  function desligarLocal() {
+    if (G.watch != null) navigator.geolocation.clearWatch(G.watch);
+    Object.assign(G, { ativo: false, watch: null, pos: null, marcador: null, circulo: null });
+    C.local.clearLayers(); ls.set('local', '0');
+    $('#btnLocal').setAttribute('aria-pressed', 'false'); $('#btnLocal').classList.remove('buscando');
+    $('#btnLocal').title = 'Mostrar minha localização no mapa (ativar/desativar)';
+    $('#btnCentralizar').title = 'Reposicionar o mapa na cidade escolhida';
   }
 
   // ---------- simulador ----------
@@ -441,7 +515,8 @@
   $('#btnTema').onclick = () => aplicarTema(TEMAS[(TEMAS.indexOf(ls.get('tema') || 'auto') + 1) % TEMAS.length]);
   $('#selRegiao').onchange = e => carregarRegiao(e.target.value);
   $('#selCidade').onchange = e => { limparSelecao(); selecionarCidade(e.target.value); };
-  $('#btnCentralizar').onclick = () => { enquadrar(); if (mobile()) $('#camadas').classList.remove('aberto'); };
+  $('#btnCentralizar').onclick = () => { reposicionar(); if (mobile()) $('#camadas').classList.remove('aberto'); };
+  $('#btnLocal').onclick = () => G.ativo ? desligarLocal() : ligarLocal();
   addEventListener('hashchange', () => {
     const [id, cid] = location.hash.slice(1).split('/');
     const r = acharRegiao(id); if (!r) return;
@@ -472,14 +547,19 @@
     l ? selecionarLinha(l.id) : aviso('Traçado desta linha não está no GTFS');
   };
   mapa.on('popupopen', e => {
-    const b = e.popup.getElement().querySelector('[data-ver-linha]');
-    if (b) b.onclick = () => { mapa.closePopup(); selecionarLinha(b.dataset.verLinha); };
+    const el = e.popup.getElement();
+    el.querySelectorAll('[data-ver-linha]').forEach(b => b.onclick = () => { mapa.closePopup(); selecionarLinha(b.dataset.verLinha); });
+    el.querySelectorAll('[data-parada]').forEach(li => li.onclick = () => {
+      const p = E.paradas.get(li.dataset.parada); if (!p) return;
+      mapa.setView([p[2], p[3]], 17);
+      L.popup({ maxWidth: 280 }).setLatLng([p[2], p[3]]).setContent(popupParada(p)).openOn(mapa);
+    });
   });
-  mapa.on('moveend', desenharParadas);
+  mapa.on('moveend', () => { desenharParadas(); desenharEstacoes(); });
   $('#cParadas').onchange = desenharParadas;
   $('#cTrilhos').onchange = desenharTrilhos;
   $('#cVeiculos').onchange = e => { if (e.target.checked) { mapa.addLayer(C.veiculos); carregarVeiculos(); } else mapa.removeLayer(C.veiculos); };
-  $('#btnOsm').onclick = estacoesOSM;
+  $('#cEstacoes').onchange = desenharEstacoes;
   $('#simPlay').onclick = () => S.rodando ? pararSim(false) : iniciarSim();
   $('#simAgora').onclick = agoraSim;
   $('#simAlvo').onchange = () => { pararSim(); atualizarSimInfo(); };
@@ -490,6 +570,7 @@
   (async () => {
     aplicarTema(ls.get('tema') || 'auto');
     usarEstilo(ls.get('mapa') || 'detalhado');
+    if (ls.get('local') === '1') ligarLocal();
     rotuloRecarregar();
     try {
       const [reg, meta] = await Promise.all([obter('data/regioes.json'), obter('data/meta.json').catch(() => null)]);

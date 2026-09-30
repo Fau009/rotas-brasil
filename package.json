@@ -6,8 +6,9 @@
     "baixar": "node scripts/baixar-gtfs.mjs",
     "gtfs": "node --max-old-space-size=4096 scripts/build-gtfs.mjs",
     "status": "node scripts/atualizar-status.mjs",
-    "dados": "npm run baixar && npm run gtfs && npm run status",
-    "servir": "npx --yes serve -l 8080 ."
+    "dados": "npm run baixar && npm run gtfs && npm run estacoes && npm run status",
+    "servir": "npx --yes serve -l 8080 .",
+    "estacoes": "node scripts/baixar-estacoes.mjs"
   },
   "author": "",
   "license": "MIT",

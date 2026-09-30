@@ -32,7 +32,7 @@ jobs:
 
       - name: Semana atual (itinerários GTFS são reprocessados 1x por semana)
         id: semana
-        run: echo "id=$(date -u +%G-%V)-${{ hashFiles('scripts/build-gtfs.mjs', 'scripts/regioes.mjs') }}" >> "$GITHUB_OUTPUT"
+        run: echo "id=$(date -u +%G-%V)-${{ hashFiles('scripts/build-gtfs.mjs', 'scripts/regioes.mjs', 'scripts/baixar-estacoes.mjs') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache dos itinerários processados
         id: cache
@@ -42,14 +42,17 @@ jobs:
             data/*/linhas.json
             data/*/paradas.json
             data/*/l
+            data/*/cidades.json
+            data/*/estacoes.json
             data/regioes.json
           key: gtfs-${{ steps.semana.outputs.id }}
 
-      - name: Baixar e processar GTFS
+      - name: Baixar e processar GTFS e estações (OSM)
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           node scripts/baixar-gtfs.mjs
           node --max-old-space-size=4096 scripts/build-gtfs.mjs
+          node scripts/baixar-estacoes.mjs
 
       - name: Coletar status dos trilhos e posição dos ônibus
         run: node scripts/atualizar-status.mjs

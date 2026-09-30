@@ -293,6 +293,15 @@ async function main() {
     }
     indice.sort((a, b) => a.c.localeCompare(b.c, 'pt-BR', { numeric: true }));
     fs.writeFileSync(path.join(dir, 'linhas.json'), JSON.stringify(indice));
+
+    // linhas que passam em cada parada (posição em linhas.json), no 6º campo da parada
+    const posLinha = new Map(indice.map((l, i) => [l.id, i]));
+    const naParada = new Map();
+    for (const l of acc.linhas.values()) for (const s of l.sentidos) for (const [pid] of s.paradas) {
+      if (!naParada.has(pid)) naParada.set(pid, new Set());
+      naParada.get(pid).add(posLinha.get(l.id));
+    }
+    for (const p of acc.paradas.values()) p.push([...(naParada.get(p[0]) || [])].sort((a, b) => a - b));
     fs.writeFileSync(path.join(dir, 'paradas.json'), JSON.stringify([...acc.paradas.values()]));
 
     // cidades com pelo menos uma parada: contorno simplificado para o mapa "Branco"
