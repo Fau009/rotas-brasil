@@ -7,6 +7,7 @@
   <meta name="description" content="Simulador de itinerários de ônibus, metrô e trem em cidades brasileiras, com dados abertos (GTFS) e status das linhas de trilhos.">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="css/estilo.css">
+  <script>try { const t = localStorage.getItem('tema'); if (t === 'claro' || t === 'escuro') document.documentElement.dataset.theme = t === 'escuro' ? 'dark' : 'light'; } catch { }</script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f6feb'/><rect x='8' y='7' width='16' height='15' rx='3' fill='white'/><rect x='10' y='10' width='12' height='5' rx='1' fill='%231f6feb'/><circle cx='12' cy='25' r='2' fill='white'/><circle cx='20' cy='25' r='2' fill='white'/></svg>">
 </head>
 <body>
@@ -16,10 +17,17 @@
       <strong>Rotas Brasil</strong>
       <span class="selo">modelo</span>
     </div>
-    <select id="selRegiao" aria-label="Região"></select>
+    <div class="local">
+      <select id="selRegiao" aria-label="Estado" title="Estado"></select>
+      <select id="selCidade" aria-label="Cidade" title="Cidade"></select>
+      <button class="btn icone" id="btnCentralizar" title="Reposicionar o mapa na cidade escolhida" aria-label="Reposicionar mapa">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg>
+      </button>
+    </div>
     <div class="atualizacao">
       <span id="txtAtualizacao">Carregando…</span>
       <button id="btnRecarregar" class="btn">↻ Recarregar</button>
+      <button id="btnTema" class="btn icone" title="Tema da interface" aria-label="Alternar tema">◐</button>
     </div>
   </header>
 
@@ -35,6 +43,7 @@
       <section class="conteudo ativa" id="aba-linhas">
         <input id="busca" type="search" placeholder="Buscar linha: número, nome ou destino">
         <div class="chips" id="filtroTipo"></div>
+        <div class="chips" id="filtroEscopo"></div>
         <div id="detalheLinha" class="detalhe oculto"></div>
         <ul id="listaLinhas" class="lista"></ul>
       </section>
@@ -55,7 +64,7 @@
         <label class="campo">O que simular
           <select id="simAlvo">
             <option value="linha">Linha selecionada</option>
-            <option value="trilhos">Todos os trilhos da região</option>
+            <option value="trilhos">Todos os trilhos do estado</option>
           </select>
         </label>
         <p id="simLinha" class="nota forte"></p>
@@ -82,13 +91,21 @@
         <p class="nota">Site estático no GitHub Pages. Uma automação (GitHub Actions) baixa os dados abertos periodicamente e publica em JSON. O botão <b>Recarregar</b> busca a versão mais recente já publicada.</p>
         <h3>Fontes de dados</h3>
         <ul id="listaFontes" class="lista-fontes"></ul>
-        <p class="nota">Itinerários e horários: feeds GTFS via <a href="https://mobilitydatabase.org" target="_blank" rel="noopener">Mobility Database</a>. Mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>. Estações sob demanda: Overpass API.</p>
+        <p class="nota">Itinerários e horários: feeds GTFS via <a href="https://mobilitydatabase.org" target="_blank" rel="noopener">Mobility Database</a>. Cidades: contornos municipais do <a href="https://servicodados.ibge.gov.br/api/docs/malhas" target="_blank" rel="noopener">IBGE</a>. Mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (detalhado) e Esri (claro/escuro). Estações sob demanda: Overpass API.</p>
       </section>
     </aside>
 
     <div class="mapa-wrap">
       <div id="mapa"></div>
+      <div class="carimbo-mobile" id="carimboMobile"></div>
+      <button class="btn camadas-toggle" id="btnCamadas" aria-label="Opções do mapa">🗺 Mapa</button>
       <div class="camadas" id="camadas">
+        <div class="estilos" id="estilosMapa" role="group" aria-label="Modelo do mapa">
+          <button data-estilo="detalhado" title="Mapa detalhado (OpenStreetMap)">Detalhado</button>
+          <button data-estilo="claro" title="Mapa claro, com poucas informações">Claro</button>
+          <button data-estilo="escuro" title="Mapa escuro">Escuro</button>
+          <button data-estilo="branco" title="Fundo branco, só linhas e contorno da cidade">Branco</button>
+        </div>
         <label><input type="checkbox" id="cTrilhos" checked> Trilhos</label>
         <label><input type="checkbox" id="cParadas" checked> Paradas (zoom)</label>
         <label id="lblVeiculos"><input type="checkbox" id="cVeiculos"> Ônibus (última posição)</label>

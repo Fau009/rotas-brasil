@@ -7,11 +7,13 @@
   const hhmm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
   const dataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
   const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { } } };
+  const mobile = () => innerWidth <= 760;
 
   const E = {
     carimbo: Date.now(), regioes: [], gtfsEm: null, meta: null, regiao: null,
+    cidades: [], cidade: 0, nomeMun: new Map(), // cidade 0 = todas as cidades do estado
     linhas: [], paradas: new Map(), status: null, veiculos: null,
-    sel: null, sentido: 0, filtroTipo: 'todos', trilhosDados: []
+    sel: null, sentido: 0, filtroTipo: 'todos', escopo: 'todas', trilhosDados: []
   };
 
   async function obter(url) {
@@ -24,18 +26,61 @@
     document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
   }
 
-  // ---------- mapa ----------
-  const escuro = matchMedia('(prefers-color-scheme: dark)').matches;
+  // ---------- mapa e modelos de fundo ----------
   const mapa = L.map('mapa', { preferCanvas: true, zoomControl: true }).setView([-15.8, -47.9], 4);
-  document.body.classList.toggle('mapa-escuro', escuro);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-  }).addTo(mapa);
+  mapa.createPane('rotulos').style.zIndex = 250; // nomes das ruas acima do fundo e abaixo das linhas
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
+  const esriAttr = 'Tiles © <a href="https://www.esri.com">Esri</a> — Esri, HERE, Garmin, © OpenStreetMap';
+  const FUNDOS = {
+    detalhado: [L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' })],
+    claro: [L.tileLayer(`${ESRI}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, attribution: esriAttr }),
+      L.tileLayer(`${ESRI}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, pane: 'rotulos' })],
+    escuro: [L.tileLayer(`${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, attribution: esriAttr }),
+      L.tileLayer(`${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, pane: 'rotulos' })],
+    branco: []
+  };
   const render = L.canvas({ padding: 0.3 });
+  mapa.createPane('contornos').style.zIndex = 350; // abaixo das linhas
+  const renderContorno = L.canvas({ padding: 0.3, pane: 'contornos' });
   const C = {
+    contorno: L.layerGroup().addTo(mapa),
     trilhos: L.layerGroup().addTo(mapa), paradas: L.layerGroup().addTo(mapa), linha: L.layerGroup().addTo(mapa),
     veiculos: L.layerGroup(), osm: L.layerGroup().addTo(mapa), sim: L.layerGroup().addTo(mapa)
   };
+  let estilo = null;
+  function usarEstilo(nome) {
+    if (!FUNDOS[nome]) nome = 'detalhado';
+    if (estilo) FUNDOS[estilo].forEach(t => mapa.removeLayer(t));
+    FUNDOS[nome].forEach(t => t.addTo(mapa));
+    estilo = nome; ls.set('mapa', nome);
+    $('#mapa').classList.toggle('fundo-branco', nome === 'branco');
+    document.querySelectorAll('#estilosMapa button').forEach(b => b.classList.toggle('ativo', b.dataset.estilo === nome));
+    desenharContorno();
+  }
+
+  // contorno das cidades: no fundo branco mostra todas (a escolhida em destaque); nos demais, só a escolhida, tracejada
+  function desenharContorno() {
+    C.contorno.clearLayers();
+    const branco = estilo === 'branco';
+    const lista = branco ? E.cidades : E.cidades.filter(c => c.id === E.cidade);
+    for (const c of [...lista].sort((a, b) => (a.id === E.cidade) - (b.id === E.cidade))) {
+      const sel = c.id === E.cidade;
+      L.polygon(c.contorno, branco
+        ? { color: sel ? '#5b6675' : '#c3cad3', weight: sel ? 1.6 : 1, fill: true, fillColor: sel ? '#eef2f7' : '#fafbfc', fillOpacity: 1, interactive: false, renderer: renderContorno }
+        : { color: '#1f6feb', weight: 1.5, dashArray: '4 4', fill: false, interactive: false, renderer: renderContorno }
+      ).addTo(C.contorno);
+    }
+  }
+
+  // ---------- tema da interface ----------
+  const TEMAS = ['auto', 'claro', 'escuro'];
+  function aplicarTema(t) {
+    const raiz = document.documentElement;
+    if (t === 'auto') delete raiz.dataset.theme; else raiz.dataset.theme = t === 'escuro' ? 'dark' : 'light';
+    ls.set('tema', t);
+    $('#btnTema').textContent = t === 'escuro' ? '☾' : t === 'claro' ? '☀' : '◐';
+    $('#btnTema').title = `Tema: ${t === 'auto' ? 'automático (sistema)' : t}. Clique para alternar.`;
+  }
 
   // ---------- cabeçalho ----------
   function atualizarCarimbo() {
@@ -43,10 +88,11 @@
     const min = s ? Math.round((Date.now() - new Date(s)) / 60000) : null;
     const rel = min == null ? '' : min < 1 ? ' (agora)' : min < 120 ? ` (há ${min} min)` : '';
     $('#txtAtualizacao').innerHTML = `Última atualização: <b>${dataHora(s)}</b>${rel} · Itinerários: ${dataHora(E.gtfsEm)}`;
+    $('#carimboMobile').innerHTML = `Atualizado: <b>${dataHora(s)}</b>${rel}`;
   }
 
   async function recarregar() {
-    const btn = $('#btnRecarregar'); btn.disabled = true; btn.textContent = '↻ Buscando…';
+    const btn = $('#btnRecarregar'); btn.disabled = true; btn.textContent = mobile() ? '↻' : '↻ Buscando…';
     const antes = E.meta?.atualizadoEm;
     E.carimbo = Date.now();
     try {
@@ -57,31 +103,57 @@
       atualizarCarimbo(); renderFontes();
       aviso(meta.atualizadoEm !== antes ? 'Dados atualizados' : 'Você já está com os dados mais recentes');
     } catch (e) { aviso('Falha ao recarregar: ' + e.message); }
-    btn.disabled = false; btn.textContent = '↻ Recarregar';
+    btn.disabled = false; rotuloRecarregar();
   }
+  const rotuloRecarregar = () => { $('#btnRecarregar').textContent = mobile() ? '↻' : '↻ Recarregar'; };
 
-  // ---------- região ----------
-  async function carregarRegiao(id) {
-    const r = E.regioes.find(x => x.id === id) || E.regioes[0];
-    E.regiao = r; ls.set('regiao', r.id); history.replaceState(null, '', '#' + r.id);
+  // ---------- estado e cidade ----------
+  const acharRegiao = id => E.regioes.find(x => x.id === id || (x.antigo || []).includes(id));
+
+  async function carregarRegiao(id, cidadeId) {
+    const r = acharRegiao(id) || E.regioes[0];
+    E.regiao = r; ls.set('regiao', r.id);
     $('#selRegiao').value = r.id;
-    limparSelecao(); pararSim(); C.trilhos.clearLayers(); C.paradas.clearLayers(); C.osm.clearLayers(); C.veiculos.clearLayers();
-    mapa.setView(r.centro, r.zoom);
+    limparSelecao(); pararSim(); C.trilhos.clearLayers(); C.paradas.clearLayers(); C.osm.clearLayers(); C.veiculos.clearLayers(); C.contorno.clearLayers();
     $('#camadas').classList.toggle('oculto-v', !r.veiculos);
     if (!r.veiculos) { $('#cVeiculos').checked = false; mapa.removeLayer(C.veiculos); }
     $('#listaLinhas').innerHTML = '<li class="mais">Carregando linhas…</li>';
+    $('#selCidade').innerHTML = '<option>Carregando…</option>';
 
-    const [linhas, paradas] = await Promise.all([obter(`data/${r.id}/linhas.json`), obter(`data/${r.id}/paradas.json`)]);
+    const [linhas, paradas, cidades] = await Promise.all([
+      obter(`data/${r.id}/linhas.json`), obter(`data/${r.id}/paradas.json`), obter(`data/${r.id}/cidades.json`)
+    ]);
     if (E.regiao !== r) return;
     E.linhas = linhas; E.paradas = new Map(paradas.map(p => [p[0], p]));
-    montarFiltros(); renderLista(); renderStatus(); desenharParadas();
+    E.cidades = cidades; E.nomeMun = new Map(cidades.map(c => [c.id, c.nome]));
+    $('#selCidade').innerHTML = `<option value="0">Todas as cidades (${cidades.length})</option>` +
+      cidades.map(c => `<option value="${c.id}">${esc(c.nome)}${c.capital ? ' · capital' : ''} (${c.linhas})</option>`).join('');
+    renderStatus();
+    const alvo = cidades.some(c => c.id === Number(cidadeId)) || Number(cidadeId) === 0 && cidadeId !== undefined ? Number(cidadeId) : (r.capital || cidades[0]?.id || 0);
+    selecionarCidade(alvo);
     if ($('#cVeiculos').checked) carregarVeiculos();
 
-    // trilhos: desenha todas as linhas de metrô/trem/VLT da região
+    // trilhos: desenha todas as linhas de metrô/trem/VLT do estado
     const trilhos = linhas.filter(l => l.t !== 'onibus');
     E.trilhosDados = (await Promise.all(trilhos.map(l => obter(`data/${r.id}/l/${l.arq}.json`).then(d => ({ l, d })).catch(() => null)))).filter(Boolean);
     if (E.regiao !== r) return;
     desenharTrilhos();
+  }
+
+  function selecionarCidade(id) {
+    E.cidade = Number(id) || 0;
+    $('#selCidade').value = String(E.cidade);
+    history.replaceState(null, '', `#${E.regiao.id}${E.cidade ? '/' + E.cidade : '/0'}`);
+    if (E.escopo !== 'todas' && !E.cidade) E.escopo = 'todas';
+    montarFiltros(); renderLista(); desenharContorno(); enquadrar(); desenharParadas();
+  }
+
+  // reposiciona o mapa na cidade escolhida (ou no conjunto de cidades do estado)
+  function enquadrar() {
+    const cs = E.cidade ? E.cidades.filter(c => c.id === E.cidade) : E.cidades;
+    if (!cs.length) return;
+    const b = L.latLngBounds(cs.flatMap(c => c.bbox));
+    mapa.fitBounds(b, { padding: [20, 20], maxZoom: 14 });
   }
 
   function desenharTrilhos() {
@@ -103,32 +175,59 @@
       if (!b.contains([p[2], p[3]])) continue;
       if (++n > 1500) break;
       L.circleMarker([p[2], p[3]], { radius: 4, color: '#555', weight: 1, fillColor: '#fff', fillOpacity: 1, renderer: render })
-        .bindPopup(`<b>${esc(p[1])}</b><br><small>Parada ${esc(p[0])}</small>`).addTo(C.paradas);
+        .bindPopup(`<b>${esc(p[1])}</b><br><small>${esc(E.nomeMun.get(p[4]) || '')} · parada ${esc(p[0])}</small>`).addTo(C.paradas);
     }
   }
 
   // ---------- lista de linhas ----------
+  // municipal: todas as paradas numa só cidade; intermunicipal: atende mais de uma
+  const ehMunicipal = l => l.m.length <= 1;
+  const linhasDaCidade = () => E.cidade ? E.linhas.filter(l => l.m.includes(E.cidade)) : E.linhas;
+  const nomeCid = id => E.nomeMun.get(id) || '?';
+  function rotaCidades(l) {
+    const [o, d] = l.od;
+    if (o && d && o !== d) return `${nomeCid(o)} → ${nomeCid(d)}`;
+    return l.m.map(nomeCid).join(' · ');
+  }
+
   function montarFiltros() {
-    const tipos = [...new Set(E.linhas.map(l => l.t))];
-    const opcoes = [['todos', 'Todas']].concat(tipos.map(t => [t, TIPOS[t] || t]));
+    const base = linhasDaCidade();
+    const tipos = [...new Set(base.map(l => l.t))];
     if (!tipos.includes(E.filtroTipo)) E.filtroTipo = 'todos';
-    $('#filtroTipo').innerHTML = opcoes.map(([v, n]) => {
-      const qtd = v === 'todos' ? E.linhas.length : E.linhas.filter(l => l.t === v).length;
+    $('#filtroTipo').innerHTML = [['todos', 'Todas']].concat(tipos.map(t => [t, TIPOS[t] || t])).map(([v, n]) => {
+      const qtd = v === 'todos' ? base.length : base.filter(l => l.t === v).length;
       return `<button class="chip ${E.filtroTipo === v ? 'ativo' : ''}" data-t="${v}">${n} (${qtd})</button>`;
     }).join('');
+
+    const inter = base.filter(l => !ehMunicipal(l)).length;
+    const cid = E.cidade ? nomeCid(E.cidade) : null;
+    $('#filtroEscopo').innerHTML = !inter ? '' : [
+      ['todas', 'Todas'],
+      ['municipais', cid ? `Só em ${cid}` : 'Municipais', base.length - inter],
+      ['inter', cid ? `Ligam ${cid} a outras cidades` : 'Intermunicipais', inter]
+    ].filter(([, , q]) => q !== 0).map(([v, n, q]) => `<button class="chip ${E.escopo === v ? 'ativo' : ''}" data-e="${v}">${esc(n)}${q != null ? ` (${q})` : ''}</button>`).join('');
   }
 
   function renderLista() {
     const q = $('#busca').value.trim().toLowerCase();
-    const res = E.linhas.filter(l => (E.filtroTipo === 'todos' || l.t === E.filtroTipo) &&
-      (!q || `${l.c} ${l.n} ${l.s.join(' ')}`.toLowerCase().includes(q)));
+    const res = linhasDaCidade().filter(l => (E.filtroTipo === 'todos' || l.t === E.filtroTipo) &&
+      (E.escopo === 'todas' || (E.escopo === 'municipais') === ehMunicipal(l)) &&
+      (!q || `${l.c} ${l.n} ${l.s.join(' ')} ${l.m.map(nomeCid).join(' ')}`.toLowerCase().includes(q)));
+    // na cidade escolhida: primeiro as linhas que só circulam nela, depois as que vêm de/vão para outras
+    if (E.cidade) res.sort((a, b) => ehMunicipal(b) - ehMunicipal(a));
     const LIM = 150;
-    $('#listaLinhas').innerHTML = res.slice(0, LIM).map(l => `
+    $('#listaLinhas').innerHTML = res.slice(0, LIM).map(l => {
+      const inter = !ehMunicipal(l);
+      const tag = inter
+        ? `<span class="escopo-tag inter" title="Atende: ${esc(l.m.map(nomeCid).join(', '))}">${esc(rotaCidades(l))}</span>`
+        : !E.cidade && l.m[0] ? `<span class="escopo-tag">${esc(nomeCid(l.m[0]))}</span>` : '';
+      return `
       <li data-id="${esc(l.id)}">
         <span class="cod" style="background:#${l.cor};color:#${l.tc}">${esc(l.c || '—')}</span>
-        <span class="nome">${esc(l.n || l.s.join(' / '))}<small>${esc(l.s.join(' ⇄ '))}</small></span>
+        <span class="nome">${esc(l.n || l.s.join(' / '))}<small>${esc(l.s.join(' ⇄ '))}</small>${tag}</span>
         <span class="tipo">${TIPOS[l.t] || ''}</span>
-      </li>`).join('') +
+      </li>`;
+    }).join('') +
       (res.length > LIM ? `<li class="mais">Mostrando ${LIM} de ${res.length}. Refine a busca.</li>` : '') +
       (!res.length ? '<li class="mais">Nenhuma linha encontrada.</li>' : '');
   }
@@ -141,7 +240,8 @@
     const d = await obter(`data/${E.regiao.id}/l/${l.arq}.json`);
     E.sel = { l, d }; E.sentido = Math.min(sentido, d.sentidos.length - 1);
     mostrarAba('linhas'); desenharLinha(true); renderDetalhe(); atualizarSimInfo();
-    if (innerWidth <= 760) $('#painel').classList.remove('aberto');
+    $('#detalheLinha').scrollIntoView({ block: 'start' });
+    if (mobile()) $('#painel').classList.remove('aberto');
   }
 
   function desenharLinha(ajustar) {
@@ -154,7 +254,7 @@
       const p = E.paradas.get(pid); if (!p) return;
       const ponta = i === 0 || i === s.paradas.length - 1;
       L.circleMarker([p[2], p[3]], { radius: ponta ? 7 : 4.5, color: cor, weight: 2, fillColor: '#fff', fillOpacity: 1, renderer: render })
-        .bindPopup(`<b>${esc(p[1])}</b><br>${i + 1}ª parada · +${Math.round(min)} min da saída`).addTo(C.linha);
+        .bindPopup(`<b>${esc(p[1])}</b><br>${esc(nomeCid(p[4]))} · ${i + 1}ª parada · +${Math.round(min)} min da saída`).addTo(C.linha);
     });
     if (ajustar) mapa.fitBounds(pl.getBounds(), { padding: [30, 30] });
   }
@@ -165,13 +265,26 @@
     const part = s.partidas[dia] || [];
     const porHora = {}; for (const m of part) (porHora[Math.floor(m / 60) % 24] ||= []).push(m);
     const intervalo = part.length > 1 ? Math.round((part.at(-1) - part[0]) / (part.length - 1)) : null;
+
+    // itinerário com marcação de quando a linha entra em outra cidade
+    let cidAnt = null; const inter = !ehMunicipal(l);
+    const itens = s.paradas.map(([pid, min], i) => {
+      const p = E.paradas.get(pid); const c = p?.[4];
+      const cab = inter && c && c !== cidAnt ? `<li class="cidade-muda">${cidAnt ? 'Entra em ' : ''}${esc(nomeCid(c))}</li>` : '';
+      if (c) cidAnt = c;
+      return `${cab}<li value="${i + 1}" data-p="${esc(pid)}">${esc(p?.[1] || pid)} <span>+${Math.round(min)}′</span></li>`;
+    }).join('');
+
     const el = $('#detalheLinha'); el.classList.remove('oculto');
     el.innerHTML = `
       <div class="cab">
         <span class="cod" style="background:#${l.cor};color:#${l.tc}">${esc(l.c || '—')}</span>
-        <div><b>${esc(l.n)}</b><br><small class="tipo">${TIPOS[l.t]}</small></div>
+        <div><b>${esc(l.n)}</b><br><small class="tipo">${TIPOS[l.t]} · ${inter ? 'intermunicipal' : 'municipal'}</small></div>
         <button class="btn mini fechar" id="btnFechar">✕</button>
       </div>
+      <div class="cidades-linha">${inter
+        ? `<span class="escopo-tag inter">${esc(rotaCidades(l))}</span>` + l.m.map(c => `<span class="escopo-tag">${esc(nomeCid(c))}</span>`).join('')
+        : `<span class="escopo-tag">${esc(nomeCid(l.m[0]))}</span>`}</div>
       <div class="chips">${d.sentidos.map((x, i) => `<button class="chip ${i === E.sentido ? 'ativo' : ''}" data-sentido="${i}">→ ${esc(x.destino || 'Sentido ' + (i + 1))}</button>`).join('')}</div>
       <div class="kpis">
         <div class="kpi"><b>${s.paradas.length}</b><span>paradas</span></div>
@@ -186,7 +299,7 @@
       <h3>Horários de partida (${DIAS[dia]})</h3>
       <div class="horarios">${Object.keys(porHora).map(h => `<b>${String(h).padStart(2, '0')}h</b><span>${porHora[h].map(m => hhmm(m).slice(3)).join(' ')}</span>`).join('') || '<span></span><span class="nota">—</span>'}</div>
       <h3>Itinerário</h3>
-      <ol class="paradas">${s.paradas.map(([pid, min]) => `<li data-p="${esc(pid)}">${esc(E.paradas.get(pid)?.[1] || pid)} <span>+${Math.round(min)}′</span></li>`).join('')}</ol>`;
+      <ol class="paradas">${itens}</ol>`;
   }
 
   // ---------- status dos trilhos ----------
@@ -266,7 +379,7 @@
   function atualizarSimInfo() {
     const alvo = $('#simAlvo').value;
     $('#simLinha').textContent = alvo === 'trilhos'
-      ? (E.trilhosDados.length ? `${E.trilhosDados.length} linhas de trilhos em ${E.regiao?.nome}` : 'Esta região não tem linhas de trilhos no GTFS')
+      ? (E.trilhosDados.length ? `${E.trilhosDados.length} linhas de trilhos em ${E.regiao?.nome}` : 'Este estado não tem linhas de trilhos no GTFS')
       : E.sel ? `Linha ${E.sel.l.c} · ${E.sel.l.n}` : 'Selecione uma linha na aba Linhas';
   }
 
@@ -295,9 +408,10 @@
     S.raf = requestAnimationFrame(passo);
   }
   function iniciarSim() {
-    if (!prepararSim()) { aviso($('#simAlvo').value === 'trilhos' ? 'Sem linhas de trilhos nesta região' : 'Selecione uma linha primeiro'); mostrarAba('linhas'); return; }
+    if (!prepararSim()) { aviso($('#simAlvo').value === 'trilhos' ? 'Sem linhas de trilhos neste estado' : 'Selecione uma linha primeiro'); mostrarAba('linhas'); return; }
     S.rodando = true; S.ultimo = 0; $('#simPlay').textContent = '⏸ Pausar';
     renderSim(); S.raf = requestAnimationFrame(passo);
+    if (mobile()) $('#painel').classList.remove('aberto');
   }
   function pararSim(limpar = true) {
     S.rodando = false; cancelAnimationFrame(S.raf); $('#simPlay').textContent = '▶ Iniciar';
@@ -319,17 +433,30 @@
   function renderFontes() {
     $('#listaFontes').innerHTML = (E.meta?.fontes || []).map(f =>
       `<li><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.nome)}</a> — ${f.ok ? '<span class="ok">ok</span>' : `<span class="erro">falhou (${esc(f.erro)})</span>`}</li>`).join('') +
-      E.regioes.map(r => `<li>GTFS ${esc(r.nome)}: ${r.linhas} linhas, ${r.paradas} paradas${r.obs ? ` <small class="nota">· ${esc(r.obs)}</small>` : ''}</li>`).join('');
+      E.regioes.map(r => `<li>GTFS ${esc(r.nome)}: ${r.linhas} linhas, ${r.paradas} paradas, ${r.cidades.length} cidades${r.obs ? ` <small class="nota">· ${esc(r.obs)}</small>` : ''}</li>`).join('');
   }
 
   // ---------- eventos ----------
   $('#btnRecarregar').onclick = recarregar;
+  $('#btnTema').onclick = () => aplicarTema(TEMAS[(TEMAS.indexOf(ls.get('tema') || 'auto') + 1) % TEMAS.length]);
   $('#selRegiao').onchange = e => carregarRegiao(e.target.value);
-  addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== E.regiao?.id && E.regioes.some(r => r.id === id)) carregarRegiao(id); });
-  $('#btnPainel').onclick = () => $('#painel').classList.toggle('aberto');
+  $('#selCidade').onchange = e => { limparSelecao(); selecionarCidade(e.target.value); };
+  $('#btnCentralizar').onclick = () => { enquadrar(); if (mobile()) $('#camadas').classList.remove('aberto'); };
+  addEventListener('hashchange', () => {
+    const [id, cid] = location.hash.slice(1).split('/');
+    const r = acharRegiao(id); if (!r) return;
+    if (r !== E.regiao) carregarRegiao(r.id, cid);
+    else if (cid !== undefined && Number(cid) !== E.cidade) selecionarCidade(cid);
+  });
+  addEventListener('resize', rotuloRecarregar);
+  $('#btnPainel').onclick = () => { $('#painel').classList.toggle('aberto'); $('#camadas').classList.remove('aberto'); };
+  $('#btnCamadas').onclick = () => $('#camadas').classList.toggle('aberto');
+  mapa.on('click', () => { if (mobile()) { $('#painel').classList.remove('aberto'); $('#camadas').classList.remove('aberto'); } });
+  $('#estilosMapa').onclick = e => { const s = e.target.closest('button')?.dataset.estilo; if (s) usarEstilo(s); };
   document.querySelectorAll('.aba').forEach(b => b.onclick = () => mostrarAba(b.dataset.aba));
   $('#busca').oninput = renderLista;
   $('#filtroTipo').onclick = e => { const t = e.target.closest('.chip')?.dataset.t; if (t) { E.filtroTipo = t; montarFiltros(); renderLista(); } };
+  $('#filtroEscopo').onclick = e => { const v = e.target.closest('.chip')?.dataset.e; if (v) { E.escopo = v; montarFiltros(); renderLista(); } };
   $('#listaLinhas').onclick = e => { const id = e.target.closest('li[data-id]')?.dataset.id; if (id) selecionarLinha(id); };
   $('#detalheLinha').onclick = e => {
     const t = e.target;
@@ -337,12 +464,12 @@
     else if (t.dataset.sentido) { E.sentido = +t.dataset.sentido; desenharLinha(true); renderDetalhe(); }
     else if (t.id === 'btnSimular') { $('#simAlvo').value = 'linha'; mostrarAba('simulador'); pararSim(); iniciarSim(); }
     else if (t.id === 'btnVerOnibus') { $('#cVeiculos').checked = true; mapa.addLayer(C.veiculos); carregarVeiculos(); }
-    else if (t.closest('li[data-p]')) { const p = E.paradas.get(t.closest('li').dataset.p); if (p) mapa.setView([p[2], p[3]], 17); }
+    else if (t.closest('li[data-p]')) { const p = E.paradas.get(t.closest('li').dataset.p); if (p) { mapa.setView([p[2], p[3]], 17); if (mobile()) $('#painel').classList.remove('aberto'); } }
   };
   $('#listaStatus').onclick = e => {
     const num = e.target.closest('li')?.dataset.num; if (!num) return;
     const l = E.linhas.find(x => x.t !== 'onibus' && numeroTrilho(x.c) === num);
-    l ? selecionarLinha(l.id) : aviso('Traçado desta linha não está no GTFS da região');
+    l ? selecionarLinha(l.id) : aviso('Traçado desta linha não está no GTFS');
   };
   mapa.on('popupopen', e => {
     const b = e.popup.getElement().querySelector('[data-ver-linha]');
@@ -361,14 +488,17 @@
 
   // ---------- início ----------
   (async () => {
+    aplicarTema(ls.get('tema') || 'auto');
+    usarEstilo(ls.get('mapa') || 'detalhado');
+    rotuloRecarregar();
     try {
       const [reg, meta] = await Promise.all([obter('data/regioes.json'), obter('data/meta.json').catch(() => null)]);
       E.regioes = reg.regioes; E.gtfsEm = reg.gtfsAtualizadoEm; E.meta = meta;
       $('#selRegiao').innerHTML = E.regioes.map(r => `<option value="${r.id}">${esc(r.nome)} (${r.uf})</option>`).join('');
       atualizarCarimbo(); renderFontes(); agoraSim();
       await carregarStatus();
-      const inicial = location.hash.slice(1) || ls.get('regiao') || 'sp';
-      await carregarRegiao(inicial);
+      const [id, cid] = location.hash.slice(1).split('/');
+      await carregarRegiao(id || ls.get('regiao') || 'sp', cid);
       setInterval(atualizarCarimbo, 60000);
     } catch (e) {
       $('#txtAtualizacao').textContent = 'Erro ao carregar dados: ' + e.message;

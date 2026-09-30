@@ -6,7 +6,10 @@ Um modelo de simulador de itinerários de ônibus, metrô e trem em cidades bras
 
 ## O que tem
 
-- **Mapa navegável** (Leaflet + OpenStreetMap) com as linhas de trilhos da região desenhadas e paradas visíveis ao aproximar.
+- **Estado → Cidade**: escolha o estado, e a capital vem selecionada. Dá para trocar para qualquer cidade atendida pelas linhas. O botão ⌖ reposiciona o mapa na cidade.
+- **Mapa navegável** (Leaflet) em 4 modelos: **Detalhado** (OpenStreetMap), **Claro**, **Escuro** (Esri) e **Branco** (só as linhas e o contorno das cidades). Mostra as linhas de trilhos do estado e as paradas ao aproximar.
+- **Linhas municipais e intermunicipais**: cada parada é associada ao seu município (contornos do IBGE). Numa cidade, o filtro separa as linhas que só circulam nela das que a ligam a outras cidades (ex.: *Guarulhos → São Paulo*), e o itinerário marca onde a linha entra em cada cidade.
+- **Tema claro/escuro** da interface (automático pelo sistema, ou escolhido no botão ◐).
 - **Linhas e itinerários**: busca por número, nome ou destino. Mostra trajeto, paradas com tempo previsto, horários de partida por tipo de dia (útil, sábado, domingo), primeira e última partida e intervalo médio.
 - **Status dos trilhos** (Grande São Paulo): situação de cada linha do Metrô, ViaQuatro, ViaMobilidade, CPTM e TIC Trens.
 - **Simulador**: anima os veículos ao longo do trajeto a partir do quadro de horários, para uma linha ou para todos os trilhos da região. Controle de horário, dia e velocidade.
@@ -14,16 +17,16 @@ Um modelo de simulador de itinerários de ônibus, metrô e trem em cidades bras
 - **Estações OSM**: busca estações e terminais do OpenStreetMap na área visível.
 - **Última atualização + botão Recarregar** no topo. Não é tempo real: os dados são coletados periodicamente.
 
-## Regiões
+## Estados e cidades
 
-| Região | Itinerários (GTFS) | Status trilhos | Posição dos ônibus |
-|---|---|---|---|
-| São Paulo (SP) | ✅ SPTrans (ônibus, metrô, CPTM) | ✅ | — (Olho Vivo exige chave) |
-| Rio de Janeiro (RJ) | ✅ SMTR | — | ✅ |
-| Belo Horizonte (MG) | ✅ BHTRANS | — | ✅ |
-| Porto Alegre (RS) | ✅ EPTC | — | — |
-| Curitiba (PR) | ✅ URBS | — | — |
-| Fortaleza (CE) | ✅ Etufor + Metrofor | — | — |
+| Estado | Itinerários (GTFS) | Cidades atendidas | Status trilhos | Posição dos ônibus |
+|---|---|---|---|---|
+| São Paulo | SPTrans (ônibus, metrô, CPTM) | 29 (capital + Grande SP) | ✅ | — (Olho Vivo exige chave) |
+| Rio de Janeiro | SMTR Rio + Angra dos Reis | 5 | — | ✅ |
+| Minas Gerais | BHTRANS (convencional + suplementar) | 8 | — | ✅ |
+| Rio Grande do Sul | EPTC Porto Alegre + Bagé | 5 | — | — |
+| Paraná | URBS Curitiba | 7 | — | — |
+| Ceará | Etufor + Metrofor + ARCE (metropolitano) | 26 | — | — |
 
 ## Como funciona
 
@@ -38,7 +41,7 @@ Como os dados passam pela automação, o navegador não esbarra em bloqueio de C
 ```
 scripts/regioes.mjs          # regiões e fontes
 scripts/baixar-gtfs.mjs      # baixa os GTFS
-scripts/build-gtfs.mjs       # GTFS → data/<regiao>/{linhas,paradas}.json + l/<linha>.json
+scripts/build-gtfs.mjs       # GTFS + IBGE → data/<uf>/{linhas,paradas,cidades}.json + l/<linha>.json
 scripts/atualizar-status.mjs # → data/status-trilhos.json, data/<regiao>/veiculos.json, data/meta.json
 js/app.js, js/simulador.js   # front-end
 ```
@@ -56,6 +59,7 @@ npm run servir   # http://localhost:8080
 - GTFS: [Mobility Database](https://mobilitydatabase.org) (SPTrans, SMTR Rio, BHTRANS, EPTC, URBS, Etufor, Metrofor)
 - Status: [Direto do Metrô](https://www.metro.sp.gov.br/wp-content/themes/metrosp/direto-metro.php), [API CPTM](https://api.cptm.sp.gov.br/AppCPTM/v1/Linhas/ObterStatus), [TIC Trens](https://www.tictrens.com.br/)
 - GPS: [Prefeitura do Rio (SPPO e BRT)](https://dados.mobilidade.rio/), [Tempo Real PBH](https://temporeal.pbh.gov.br/)
-- Mapa: © [OpenStreetMap](https://www.openstreetmap.org/copyright) · Estações: Overpass API
+- Municípios: [IBGE – malhas e localidades](https://servicodados.ibge.gov.br/api/docs)
+- Mapa: © [OpenStreetMap](https://www.openstreetmap.org/copyright) · Esri Light/Dark Gray Canvas · Estações: Overpass API
 
 **Limitações:** as linhas 8 e 9 (ViaMobilidade) não têm status público. Os feeds de Porto Alegre e Fortaleza estão marcados como inativos na Mobility Database, então os horários podem estar desatualizados. Curitiba não tem traçado no GTFS, e o trajeto liga as paradas. Em BH, o número da linha no GPS é o código interno da BHTRANS.

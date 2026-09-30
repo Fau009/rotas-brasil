@@ -127,7 +127,7 @@ async function main() {
   const status = await statusSP();
   fs.writeFileSync(path.join(DATA, 'status-trilhos.json'), JSON.stringify({ atualizadoEm: agora, linhas: status }));
 
-  for (const [reg, fn] of [['rj', veiculosRJ], ['bh', veiculosBH]]) {
+  for (const [reg, fn] of [['rj', veiculosRJ], ['mg', veiculosBH]]) {
     const v = await fn();
     fs.mkdirSync(path.join(DATA, reg), { recursive: true });
     if (v) fs.writeFileSync(path.join(DATA, reg, 'veiculos.json'), JSON.stringify({ atualizadoEm: agora, v }));

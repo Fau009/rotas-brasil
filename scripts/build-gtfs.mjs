@@ -216,6 +216,42 @@ async function processarFeed(arquivo, prefixo, acc) {
   }
 }
 
+// ---------- municípios (IBGE) ----------
+async function municipiosIBGE(uf) {
+  const base = 'https://servicodados.ibge.gov.br/api';
+  const [malha, nomes] = await Promise.all([
+    fetch(`${base}/v3/malhas/estados/${uf}?intrarregiao=municipio&formato=application/vnd.geo%2Bjson&qualidade=intermediaria`).then(r => r.json()),
+    fetch(`${base}/v1/localidades/estados/${uf}/municipios`).then(r => r.json())
+  ]);
+  const nome = new Map(nomes.map(m => [String(m.id), m.nome]));
+  return malha.features.map(f => {
+    const poligonos = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    const bb = [180, 90, -180, -90];
+    for (const pol of poligonos) for (const [lo, la] of pol[0]) { bb[0] = Math.min(bb[0], lo); bb[1] = Math.min(bb[1], la); bb[2] = Math.max(bb[2], lo); bb[3] = Math.max(bb[3], la); }
+    const id = Number(f.properties.codarea);
+    return { id, nome: nome.get(String(id)) || String(id), poligonos, bb };
+  });
+}
+
+function dentro(anel, lo, la) {
+  let d = false;
+  for (let i = 0, j = anel.length - 1; i < anel.length; j = i++) {
+    const [xi, yi] = anel[i], [xj, yj] = anel[j];
+    if ((yi > la) !== (yj > la) && lo < (xj - xi) * (la - yi) / (yj - yi) + xi) d = !d;
+  }
+  return d;
+}
+function acharMunicipio(muns, la, lo) {
+  let perto = null, md = 0.02; // parada fora de todos os contornos (ex.: beira-mar): usa o mais próximo até ~2 km
+  for (const m of muns) {
+    const [x0, y0, x1, y1] = m.bb;
+    const fora = Math.max(x0 - lo, 0, lo - x1) + Math.max(y0 - la, 0, la - y1);
+    if (fora > 0) { if (fora < md) { md = fora; perto = m; } continue; }
+    if (m.poligonos.some(pol => dentro(pol[0], lo, la) && !pol.slice(1).some(h => dentro(h, lo, la)))) return m;
+  }
+  return perto;
+}
+
 // ---------- principal ----------
 async function main() {
   fs.mkdirSync(DATA, { recursive: true });
@@ -231,18 +267,50 @@ async function main() {
     const dir = path.join(DATA, r.id); fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(path.join(dir, 'l'), { recursive: true });
 
+    // município de cada parada (contornos do IBGE)
+    const muns = await municipiosIBGE(r.ibge);
+    const porMun = new Map(); // código -> {linhas:Set, bbox}
+    for (const p of acc.paradas.values()) {
+      const m = acharMunicipio(muns, p[2], p[3]);
+      p.push(m ? m.id : 0);
+      if (!m) continue;
+      if (!porMun.has(m.id)) porMun.set(m.id, { m, linhas: new Set(), paradas: 0, bb: [90, 180, -90, -180] });
+      const x = porMun.get(m.id); x.paradas++;
+      x.bb = [Math.min(x.bb[0], p[2]), Math.min(x.bb[1], p[3]), Math.max(x.bb[2], p[2]), Math.max(x.bb[3], p[3])];
+    }
+
     const indice = [];
     for (const l of acc.linhas.values()) {
       l.sentidos.sort((a, b) => a.d.localeCompare(b.d));
+      const ms = new Set();
+      for (const s of l.sentidos) for (const [pid] of s.paradas) { const c = acc.paradas.get(pid)?.[4]; if (c) ms.add(c); }
+      for (const c of ms) porMun.get(c).linhas.add(l.id);
       fs.writeFileSync(path.join(dir, 'l', l.arq + '.json'), JSON.stringify({ id: l.id, sentidos: l.sentidos }));
-      indice.push({ id: l.id, arq: l.arq, c: l.c, n: l.n, t: l.t, cor: l.cor, tc: l.tc, s: l.sentidos.map(s => s.destino) });
+      // origem e destino (município da primeira e da última parada do primeiro sentido)
+      const ps = l.sentidos[0].paradas;
+      const od = [acc.paradas.get(ps[0][0])?.[4] || 0, acc.paradas.get(ps.at(-1)[0])?.[4] || 0];
+      indice.push({ id: l.id, arq: l.arq, c: l.c, n: l.n, t: l.t, cor: l.cor, tc: l.tc, s: l.sentidos.map(s => s.destino), m: [...ms], od });
     }
     indice.sort((a, b) => a.c.localeCompare(b.c, 'pt-BR', { numeric: true }));
     fs.writeFileSync(path.join(dir, 'linhas.json'), JSON.stringify(indice));
     fs.writeFileSync(path.join(dir, 'paradas.json'), JSON.stringify([...acc.paradas.values()]));
 
+    // cidades com pelo menos uma parada: contorno simplificado para o mapa "Branco"
+    const cidades = [...porMun.values()].map(({ m, linhas, paradas, bb }) => ({
+      id: m.id, nome: m.nome, capital: m.id === r.capital, linhas: linhas.size, paradas,
+      bbox: [[r5(bb[0]), r5(bb[1])], [r5(bb[2]), r5(bb[3])]],
+      contorno: m.poligonos.map(pol => simplificar(pol[0], 0.0015).map(([lo, la]) => [r5(la), r5(lo)]))
+    })).sort((a, b) => b.capital - a.capital || b.linhas - a.linhas || a.nome.localeCompare(b.nome, 'pt-BR'));
+    fs.writeFileSync(path.join(dir, 'cidades.json'), JSON.stringify(cidades));
+
     const porTipo = {}; for (const l of indice) porTipo[l.t] = (porTipo[l.t] || 0) + 1;
-    saida.push({ ...r, gtfs: undefined, linhas: indice.length, paradas: acc.paradas.size, porTipo });
+    const cap = cidades.find(c => c.capital) || cidades[0];
+    saida.push({
+      id: r.id, nome: r.nome, uf: r.uf, antigo: r.antigo, veiculos: r.veiculos, statusTrilhos: r.statusTrilhos, obs: r.obs,
+      capital: cap?.id, cidades: cidades.map(c => ({ id: c.id, nome: c.nome, linhas: c.linhas })),
+      linhas: indice.length, paradas: acc.paradas.size, porTipo
+    });
+    console.log(`   ${cidades.length} cidades: ${cidades.slice(0, 6).map(c => `${c.nome} (${c.linhas})`).join(', ')}…`);
     console.log(`${r.id}: ${indice.length} linhas, ${acc.paradas.size} paradas, ${JSON.stringify(porTipo)} (${((Date.now() - t) / 1000).toFixed(0)}s)`);
   }
   fs.writeFileSync(path.join(DATA, 'regioes.json'), JSON.stringify({ gtfsAtualizadoEm: new Date().toISOString(), regioes: saida }, null, 1));
