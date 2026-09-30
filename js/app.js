@@ -36,10 +36,9 @@
     claro: [L.tileLayer(`${ESRI}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, attribution: esriAttr }),
       L.tileLayer(`${ESRI}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, pane: 'rotulos' })],
     escuro: [L.tileLayer(`${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, attribution: esriAttr }),
-      L.tileLayer(`${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, pane: 'rotulos' })],
-    branco: []
+      L.tileLayer(`${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, pane: 'rotulos' })]
   };
-  const render = L.canvas({ padding: 0.3 });
+  const render = L.canvas({ padding: 0.3, tolerance: 6 });
   mapa.createPane('contornos').style.zIndex = 350; // abaixo das linhas
   const renderContorno = L.canvas({ padding: 0.3, pane: 'contornos' });
   const C = {
@@ -54,23 +53,24 @@
     if (estilo) FUNDOS[estilo].forEach(t => mapa.removeLayer(t));
     FUNDOS[nome].forEach(t => t.addTo(mapa));
     estilo = nome; ls.set('mapa', nome);
-    $('#mapa').classList.toggle('fundo-branco', nome === 'branco');
     document.querySelectorAll('#estilosMapa button').forEach(b => b.classList.toggle('ativo', b.dataset.estilo === nome));
     desenharContorno(); desenharEstacoes();
   }
 
-  // contorno das cidades: no fundo branco mostra todas (a escolhida em destaque); nos demais, só a escolhida, tracejada
+  // contorno tracejado da cidade escolhida
   function desenharContorno() {
     C.contorno.clearLayers();
-    const branco = estilo === 'branco';
-    const lista = branco ? E.cidades : E.cidades.filter(c => c.id === E.cidade);
-    for (const c of [...lista].sort((a, b) => (a.id === E.cidade) - (b.id === E.cidade))) {
-      const sel = c.id === E.cidade;
-      L.polygon(c.contorno, branco
-        ? { color: sel ? '#5b6675' : '#c3cad3', weight: sel ? 1.6 : 1, fill: true, fillColor: sel ? '#eef2f7' : '#fafbfc', fillOpacity: 1, interactive: false, renderer: renderContorno }
-        : { color: '#1f6feb', weight: 1.5, dashArray: '4 4', fill: false, interactive: false, renderer: renderContorno }
-      ).addTo(C.contorno);
-    }
+    for (const c of E.cidades.filter(c => c.id === E.cidade))
+      L.polygon(c.contorno, { color: '#1f6feb', weight: 1.5, dashArray: '4 4', fill: false, interactive: false, renderer: renderContorno }).addTo(C.contorno);
+  }
+
+  // Popup solto (não preso à camada): paradas e estações são redesenhadas quando o mapa se move,
+  // e o próprio popup desloca o mapa ao abrir; preso à camada, ele fecharia junto com ela.
+  function popupAoClicar(camada, conteudo, opcoes = { maxWidth: 280 }) {
+    return camada.on('click', e => {
+      L.DomEvent.stopPropagation(e);
+      L.popup(opcoes).setLatLng(camada.getLatLng()).setContent(typeof conteudo === 'function' ? conteudo() : conteudo).openOn(mapa);
+    });
   }
 
   // ---------- tema da interface ----------
@@ -182,8 +182,8 @@
     for (const p of E.paradas.values()) {
       if (!b.contains([p[2], p[3]])) continue;
       if (++n > 1500) break;
-      L.circleMarker([p[2], p[3]], { radius: 5, color: '#555', weight: 1.5, fillColor: '#fff', fillOpacity: 1, renderer: render })
-        .bindPopup(() => popupParada(p), { maxWidth: 280 }).addTo(C.paradas);
+      popupAoClicar(L.circleMarker([p[2], p[3]], { radius: 5, color: '#555', weight: 1.5, fillColor: '#fff', fillOpacity: 1, renderer: render }),
+        () => popupParada(p)).addTo(C.paradas);
     }
   }
 
@@ -198,7 +198,7 @@
         : '<div class="nota">Nenhuma linha cadastrada nesta parada.</div>');
   }
 
-  // estações e terminais (OSM): nos fundos sem nomes (claro/escuro/branco) desenha ponto + nome
+  // estações e terminais (OSM): nos fundos sem nomes (claro/escuro) desenha ponto + nome
   function desenharEstacoes() {
     C.estacoes.clearLayers();
     if (!$('#cEstacoes').checked || estilo === 'detalhado' || !E.estacoes.length) return;
@@ -215,7 +215,8 @@
       const terminal = tipo === 'terminal';
       const m = L.circleMarker([lat, lon], {
         radius: terminal ? 4.5 : 5.5, weight: 2, color: COR[tipo], fillColor: escuroMapa ? '#171e27' : '#fff', fillOpacity: 1, renderer: render
-      }).bindPopup(`<b>${esc(nome)}</b><br>${NOME[tipo]}${op ? ' · ' + esc(op) : ''}<br><small>OpenStreetMap</small>`).addTo(C.estacoes);
+      });
+      popupAoClicar(m, `<b>${esc(nome)}</b><br>${NOME[tipo]}${op ? ' · ' + esc(op) : ''}<br><small>OpenStreetMap</small>`).addTo(C.estacoes);
       const pt = mapa.latLngToContainerPoint([lat, lon]);
       const w = nome.length * (terminal ? 6 : 6.6) + 14, x = pt.x + 4, y = pt.y - 9;
       if (!cabe(x, y, w, 18)) continue;
@@ -299,7 +300,8 @@
       const p = E.paradas.get(pid); if (!p) return;
       const ponta = i === 0 || i === s.paradas.length - 1;
       L.circleMarker([p[2], p[3]], { radius: ponta ? 7 : 4.5, color: cor, weight: 2, fillColor: '#fff', fillOpacity: 1, renderer: render })
-        .bindPopup(() => popupParada(p, ` · ${i + 1}ª parada desta linha, +${Math.round(min)} min da saída`), { maxWidth: 280 }).addTo(C.linha);
+        .addTo(C.linha);
+      popupAoClicar(C.linha.getLayers().at(-1), () => popupParada(p, ` · ${i + 1}ª parada desta linha, +${Math.round(min)} min da saída`));
     });
     if (ajustar) mapa.fitBounds(pl.getBounds(), { padding: [30, 30] });
   }

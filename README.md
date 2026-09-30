@@ -7,7 +7,7 @@ Um modelo de simulador de itinerários de ônibus, metrô e trem em cidades bras
 ## O que tem
 
 - **Estado → Cidade**: escolha o estado, e a capital vem selecionada. Dá para trocar para qualquer cidade atendida pelas linhas. O botão ⌖ reposiciona o mapa na cidade.
-- **Mapa navegável** (Leaflet) em 4 modelos: **Detalhado** (OpenStreetMap), **Claro**, **Escuro** (Esri) e **Branco** (só as linhas e o contorno das cidades). Mostra as linhas de trilhos do estado e as paradas ao aproximar.
+- **Mapa navegável** (Leaflet) em 3 modelos: **Detalhado** (OpenStreetMap), **Claro** e **Escuro** (Esri). Mostra as linhas de trilhos do estado e as paradas ao aproximar.
 - **Linhas municipais e intermunicipais**: cada parada é associada ao seu município (contornos do IBGE). Numa cidade, o filtro separa as linhas que só circulam nela das que a ligam a outras cidades (ex.: *Guarulhos → São Paulo*), e o itinerário marca onde a linha entra em cada cidade.
 - **Tema claro/escuro** da interface (automático pelo sistema, ou escolhido no botão ◐).
 - **Linhas e itinerários**: busca por número, nome ou destino. Mostra trajeto, paradas com tempo previsto, horários de partida por tipo de dia (útil, sábado, domingo), primeira e última partida e intervalo médio.
@@ -16,7 +16,7 @@ Um modelo de simulador de itinerários de ônibus, metrô e trem em cidades bras
 - **Ônibus (última posição)**: Rio de Janeiro (ônibus municipais + BRT) e Belo Horizonte.
 - **Você está aqui**: um ícone discreto no topo liga e desliga a localização. Com ela ligada, o ⌖ centraliza em você, e tocar no marcador lista as paradas mais próximas (até 500 m). A localização fica só no navegador.
 - **Linhas da parada**: ao clicar numa parada, aparecem todas as linhas que passam ali. Cada uma abre o itinerário.
-- **Estações e terminais** (OpenStreetMap, atualizados semanalmente): nos mapas Claro, Escuro e Branco, os nomes das estações de metrô, trem, VLT e dos terminais aparecem direto no mapa, sem sobreposição.
+- **Estações e terminais** (OpenStreetMap, atualizados semanalmente): nos mapas Claro e Escuro, os nomes das estações de metrô, trem, VLT e dos terminais aparecem direto no mapa, sem sobreposição.
 - **Última atualização + botão Recarregar** no topo. Não é tempo real: os dados são coletados periodicamente.
 
 ## Estados e cidades

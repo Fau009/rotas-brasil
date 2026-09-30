@@ -107,7 +107,6 @@ select, input[type=search] { font: inherit; color: var(--texto); background: var
 .estilos button { flex: 1; font: inherit; font-size: 12px; padding: 4px 8px; border: 0; background: var(--sup); color: var(--sutil); cursor: pointer; }
 .estilos button + button { border-left: 1px solid var(--borda); }
 .estilos button.ativo { background: var(--primaria); color: #fff; }
-#mapa.fundo-branco { background: #fff; }
 .camadas-toggle { display: none; position: absolute; z-index: 600; right: 10px; bottom: 24px; box-shadow: var(--sombra); background: var(--sup); }
 .escopo-tag { font-size: 10.5px; border-radius: 6px; padding: 1px 6px; background: var(--sup2); color: var(--sutil); border: 1px solid var(--borda); white-space: nowrap; }
 .escopo-tag.inter { background: #fff4d6; color: #7a5200; border-color: #f0d68a; }
