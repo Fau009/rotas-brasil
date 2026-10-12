@@ -5,7 +5,7 @@
   Não toca em dados (JSON/APIs) nem em nada fora da própria pasta do site.
 */
 const PREFIXO = 'fs-rotas-brasil-';                                      // cada site do domínio tem o seu
-const CACHE = PREFIXO + 'v1';
+const CACHE = PREFIXO + 'v2';
 const PASTA = new URL(self.registration.scope).pathname;           // ex.: /dado-online/
 const SO_PROPRIOS = null;                                 // regex quando o escopo é a raiz do domínio
 
@@ -25,8 +25,10 @@ self.addEventListener('fetch', e => {
   if (SO_PROPRIOS && !SO_PROPRIOS.test(url.pathname)) return;
   const estatico = req.mode === 'navigate' || ['document', 'style', 'script', 'image', 'font', 'manifest'].includes(req.destination);
   if (!estatico) return;   // dados e chamadas de API vão direto para a rede
+  // 'no-cache' revalida com o servidor: evita juntar página nova com CSS/JS antigos
+  // guardados pelo navegador (o GitHub Pages permite reaproveitar arquivos por 10 min).
   e.respondWith(
-    fetch(req).then(resp => {
+    fetch(req, req.mode === 'navigate' ? undefined : { cache: 'no-cache' }).then(resp => {
       if (resp.ok) { const copia = resp.clone(); caches.open(CACHE).then(c => c.put(req, copia)).catch(() => {}); }
       return resp;
     }).catch(() => caches.open(CACHE).then(c => c.match(req).then(r => r || (req.mode === 'navigate' ? c.match('./') : undefined))))
