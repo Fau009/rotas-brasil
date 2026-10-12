@@ -9,6 +9,9 @@
   <link rel="stylesheet" href="css/estilo.css">
   <script>try { const t = localStorage.getItem('tema'); if (t === 'claro' || t === 'escuro') document.documentElement.dataset.theme = t === 'escuro' ? 'dark' : 'light'; } catch { }</script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f6feb'/><rect x='8' y='7' width='16' height='15' rx='3' fill='white'/><rect x='10' y='10' width='12' height='5' rx='1' fill='%231f6feb'/><circle cx='12' cy='25' r='2' fill='white'/><circle cx='20' cy='25' r='2' fill='white'/></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<meta name="theme-color" content="#1f6feb">
 </head>
 <body>
   <header class="topo">
@@ -96,6 +99,7 @@
         <ul id="listaFontes" class="lista-fontes"></ul>
         <p class="nota">Itinerários e horários: feeds GTFS via <a href="https://mobilitydatabase.org" target="_blank" rel="noopener">Mobility Database</a>. Cidades: contornos municipais do <a href="https://servicodados.ibge.gov.br/api/docs/malhas" target="_blank" rel="noopener">IBGE</a>. Mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (detalhado) e Esri (claro/escuro). Estações e terminais: OpenStreetMap via Overpass API (atualizado semanalmente). Sua localização, quando ativada, fica só no seu navegador.</p>
       </section>
+      <div class="app-links" data-app-links style="margin:0;padding:8px 14px 10px;border-top:1px solid var(--borda);flex:none"></div>
     </aside>
 
     <div class="mapa-wrap">
@@ -119,5 +123,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="js/simulador.js"></script>
   <script src="js/app.js"></script>
+<script src="pwa.js" defer></script>
 </body>
 </html>

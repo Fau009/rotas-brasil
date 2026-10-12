@@ -60,7 +60,7 @@ jobs:
       - name: Montar site
         run: |
           mkdir -p _site
-          cp -r index.html css js data _site/
+          cp -r index.html css js data manifest.webmanifest sw.js pwa.js icones _site/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
